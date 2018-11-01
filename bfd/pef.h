@@ -23,6 +23,83 @@
 
 #include <stdio.h>
 
+/* external */
+
+typedef struct pef_external_header {
+  unsigned char tag1[4];
+  unsigned char tag2[4];
+  unsigned char architecture[4];
+  unsigned char format_version[4];
+  unsigned char timestamp[4];
+  unsigned char old_definition_version[4];
+  unsigned char old_implementation_version[4];
+  unsigned char current_version[4];
+  unsigned char section_count[2];
+  unsigned char instantiated_section_count[2];
+  unsigned char reserved[4];
+} ATTRIBUTE_PACKED pef_external_header;
+
+typedef struct pef_external_section_header {
+  unsigned char name_offset[4];
+  unsigned char header_offset[4];
+  unsigned char default_address[4];
+  unsigned char total_length[4];
+  unsigned char unpacked_length[4];
+  unsigned char container_length[4];
+  unsigned char container_offset[4];
+  unsigned char section_kind[1];
+  unsigned char share_kind[1];
+  unsigned char alignment[1];
+  unsigned char reserved[1];
+} ATTRIBUTE_PACKED pef_external_section_header;
+
+typedef struct pef_external_loader_header
+{
+  unsigned char main_section[4];
+  unsigned char main_offset[4];
+  unsigned char init_section[4];
+  unsigned char init_offset[4];
+  unsigned char term_section[4];
+  unsigned char term_offset[4];
+  unsigned char imported_library_count[4];
+  unsigned char total_imported_symbol_count[4];
+  unsigned char reloc_section_count[4];
+  unsigned char reloc_instr_offset[4];
+  unsigned char loader_strings_offset[4];
+  unsigned char export_hash_offset[4];
+  unsigned char export_hash_table_power[4];
+  unsigned char exported_symbol_count[4];
+} ATTRIBUTE_PACKED pef_external_loader_header;
+
+typedef struct pef_external_imported_library
+{
+  unsigned char name_offset[4];
+  unsigned char old_implementation_version[4];
+  unsigned char current_version[4];
+  unsigned char imported_symbol_count[4];
+  unsigned char first_imported_symbol[4];
+  unsigned char options[1];
+  unsigned char reserved_a[1];
+  unsigned char reserved_b[2];
+} ATTRIBUTE_PACKED pef_external_imported_library;
+
+typedef struct pef_external_relocation_header
+{
+  unsigned char section_index[2];
+  unsigned char reserved_a[2];
+  unsigned char reloc_count[4];
+  unsigned char first_reloc_offset[4];
+} ATTRIBUTE_PACKED pef_external_relocation_header;
+
+typedef struct pef_external_exported_symbol
+{
+  unsigned char class_and_name[4];
+  unsigned char symbol_value[4];
+  unsigned char section_index[2];
+} ATTRIBUTE_PACKED pef_external_exported_symbol;
+
+/* internal */
+
 struct bfd_pef_header
 {
   unsigned long tag1;

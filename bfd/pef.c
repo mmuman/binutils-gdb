@@ -491,7 +491,7 @@ bfd_pef_scan_start_address (bfd *abfd)
     goto end;
 
   for (section = abfd->sections; section != NULL; section = section->next)
-    if ((long) (section->index + 1) == header.main_section)
+    if ((long) (section->index) == header.main_section)
       break;
 
   if (section == NULL)
@@ -577,8 +577,8 @@ bfd_pef_read_header (bfd *abfd, bfd_pef_header *header)
   header->old_definition_version = bfd_getb32 (buf + 20);
   header->old_implementation_version = bfd_getb32 (buf + 24);
   header->current_version = bfd_getb32 (buf + 28);
-  header->section_count = bfd_getb32 (buf + 32) + 1;
-  header->instantiated_section_count = bfd_getb32 (buf + 34);
+  header->section_count = bfd_getb16 (buf + 32);
+  header->instantiated_section_count = bfd_getb16 (buf + 34);
   header->reserved = bfd_getb32 (buf + 36);
 
   return 0;

@@ -41,7 +41,6 @@ typedef struct pef_external_header {
 
 typedef struct pef_external_section_header {
   unsigned char name_offset[4];
-  unsigned char header_offset[4];
   unsigned char default_address[4];
   unsigned char total_length[4];
   unsigned char unpacked_length[4];

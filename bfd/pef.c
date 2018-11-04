@@ -36,7 +36,6 @@
 
 #define bfd_pef_close_and_cleanup		    _bfd_generic_close_and_cleanup
 #define bfd_pef_bfd_free_cached_info		    _bfd_generic_bfd_free_cached_info
-#define bfd_pef_new_section_hook		    _bfd_generic_new_section_hook
 #define bfd_pef_bfd_is_local_label_name		    bfd_generic_is_local_label_name
 #define bfd_pef_bfd_is_target_special_symbol        _bfd_bool_bfd_asymbol_false
 #define bfd_pef_get_lineno			    _bfd_nosymbols_get_lineno
@@ -49,7 +48,6 @@
 #define bfd_pef_minisymbol_to_symbol		    _bfd_generic_minisymbol_to_symbol
 #define bfd_pef_set_arch_mach			    _bfd_generic_set_arch_mach
 #define bfd_pef_get_section_contents		    _bfd_generic_get_section_contents
-#define bfd_pef_set_section_contents		    _bfd_generic_set_section_contents
 #define bfd_pef_bfd_get_relocated_section_contents  bfd_generic_get_relocated_section_contents
 #define bfd_pef_bfd_relax_section		    bfd_generic_relax_section
 #define bfd_pef_bfd_gc_sections			    bfd_generic_gc_sections
@@ -70,6 +68,12 @@
 #define bfd_pef_bfd_link_split_section		    _bfd_generic_link_split_section
 #define bfd_pef_get_section_contents_in_window	    _bfd_generic_get_section_contents_in_window
 #define bfd_pef_bfd_link_check_relocs		    _bfd_generic_link_check_relocs
+
+
+static bfd_boolean bfd_pef_compute_section_file_positions
+  (bfd *);
+static bfd_boolean bfd_pef_set_section_contents
+  (bfd *, asection *, const void *, file_ptr, bfd_size_type);
 
 static int
 bfd_pef_parse_traceback_table (bfd *abfd,
@@ -253,8 +257,366 @@ bfd_pef_convert_architecture (unsigned long architecture,
 }
 
 static bfd_boolean
-bfd_pef_mkobject (bfd *abfd ATTRIBUTE_UNUSED)
+bfd_pef_mkobject (bfd *abfd)
 {
+  bfd_pef_data_struct *pef;
+  bfd_size_type amt = sizeof (bfd_pef_data_struct);
+  fprintf(stderr, "%s()\n", __FUNCTION__);
+
+  abfd->tdata.pef_data = bfd_zalloc (abfd, amt);
+  if (abfd->tdata.pef_data == NULL)
+    return FALSE;
+  pef = pef_data (abfd);
+  pef->sections = NULL;
+  pef->section_name_table_size = 0;
+  pef->loader = NULL;
+
+
+  return TRUE;
+}
+
+
+static bfd_boolean
+pef_write_contents (bfd * abfd)
+{
+//  asection *current;
+//  bfd_boolean hasrelocs = FALSE;
+  int instanciated;
+  asection *current;
+  asection *loader = pef_data(abfd)->loader;
+
+//  file_ptr reloc_base;
+  bfd_pef_header internal_f;
+  bfd_pef_loader_header internal_l;
+
+  file_ptr sofar = sizeof(pef_external_header);
+  file_ptr section_names_start = sofar + abfd->section_count * sizeof(pef_external_header);
+  file_ptr section_names = 0;
+//  reloc_base = obj_relocbase (abfd);
+
+  fprintf(stderr, "%s()\n", __FUNCTION__);
+
+
+
+  /* OK, now set up the filehdr...  */
+
+  internal_f.tag1 = BFD_PEF_TAG1;
+  internal_f.tag2 = BFD_PEF_TAG2;
+  switch (bfd_get_arch (abfd))
+    {
+    case bfd_arch_powerpc:
+      internal_f.architecture = BFD_PEF_ARCH_POWERPC;
+      break;
+    case bfd_arch_m68k:
+      internal_f.architecture = BFD_PEF_ARCH_POWERPC;
+      break;
+    default:
+      bfd_set_error (bfd_error_invalid_target);
+      return FALSE;
+    }
+  internal_f.format_version = 1;
+  internal_f.timestamp = 0;
+  internal_f.old_definition_version = 0;
+  internal_f.old_implementation_version = 0;
+  internal_f.current_version = 0;
+  internal_f.section_count = 0;//abfd->section_count;
+  internal_f.instantiated_section_count = 0;
+  internal_f.reserved = 0;
+
+  /* we'll now generate the loader section itself */
+  /* it's written later on */
+
+  internal_l.main_section = -1; /* updated later */
+  internal_l.main_offset = 0;
+  internal_l.init_section = -1;
+  internal_l.init_offset = 0;
+  internal_l.term_section = -1;
+  internal_l.term_offset = 0;
+  internal_l.imported_library_count = 0;
+  internal_l.total_imported_symbol_count = 0;
+  internal_l.reloc_section_count = 0;
+  internal_l.reloc_instr_offset = 0;
+  internal_l.loader_strings_offset = 0;
+  internal_l.export_hash_offset = 0;
+  internal_l.export_hash_table_power = 0;
+  internal_l.exported_symbol_count = 0;
+
+  /* two rounds: we first put the instanciated sections, then the other ones */
+  for (instanciated = 1; instanciated >= 0; instanciated--)
+    {
+      fprintf(stderr, "instanciated %d\n", instanciated);
+      for (current = abfd->sections;
+	   current != NULL;
+	   current = current->next)
+	{
+	  bfd_pef_section internal_s;
+	  pef_external_section_header * buff;
+	  bfd_size_type amount, len;
+
+	  // first pass: skip non-instanciated sections
+	  if (instanciated && !(current->flags & SEC_ALLOC))
+	    continue;
+	  // second pass: skip instanciated sections
+	  if (!instanciated && (current->flags & SEC_ALLOC))
+	    continue;
+
+	  /*if (instanciated)
+	    internal_f.instantiated_section_count++;*/
+	  internal_f.instantiated_section_count = 2;
+
+	  if (abfd->start_address >= current->vma && abfd->start_address <= current->vma + current->size) {
+	    internal_l.main_section = internal_f.section_count;
+	    internal_l.main_offset = abfd->start_address - current->vma;
+	    fprintf(stderr, "found entry point @ %lx -> s%ld+%lx\n", abfd->start_address, internal_l.main_section, internal_l.main_offset);
+	  }
+
+	  internal_f.section_count++;
+
+	  fprintf(stderr, "section %s at %ld fileoffset %ld\n", current->name, sofar, current->filepos);
+
+	  /* write out the section name first */
+
+	  if (bfd_seek (abfd, section_names_start + section_names, SEEK_SET) != 0)
+	    return FALSE;
+
+	  len = strlen(current->name) + 1;
+	  internal_s.name_offset = section_names;
+	  section_names += len;
+
+	  amount = bfd_bwrite (current->name, len, abfd);
+
+	  if (amount != len)
+	    return FALSE;
+
+	  /* fill in section header now */
+
+	  internal_s.default_address = current->vma - current->filepos;
+	  internal_s.total_length = current->size;
+	  internal_s.unpacked_length = (current->flags & SEC_HAS_CONTENTS) ? current->size : 0;
+	  internal_s.container_length = internal_s.unpacked_length; /* TODO: handle packed data (compressed?) */
+	  internal_s.container_offset = current->filepos;
+	  /* by default mark unknown sections as debug so they should be ignored XXX */
+	  internal_s.section_kind = BFD_PEF_SECTION_DEBUG;
+	  if (current->flags & SEC_CODE)
+	    internal_s.section_kind = BFD_PEF_SECTION_CODE;
+	  if (current->flags & SEC_DATA)
+	    internal_s.section_kind = BFD_PEF_SECTION_UNPACKED_DATA;
+	  if (current->flags & SEC_ALLOC && !(current->flags & SEC_LOAD))
+	    internal_s.section_kind = BFD_PEF_SECTION_UNPACKED_DATA; /* BSS */
+	  if ((current->flags & SEC_CODE) && (current->flags & SEC_DATA))
+	    internal_s.section_kind = BFD_PEF_SECTION_EXEC_DATA;
+	  if ((current->flags & SEC_DATA) && (current->flags & SEC_READONLY))
+	    internal_s.section_kind = BFD_PEF_SECTION_CONSTANT;
+	  /* last section is always loader */
+	  if (current->next == NULL)
+	    internal_s.section_kind = BFD_PEF_SECTION_LOADER;
+	  internal_s.share_kind = BFD_PEF_SHARE_PROCESS; /* TODO */
+	  internal_s.alignment = current->alignment_power;
+	  internal_s.reserved = 0;
+
+	  amount = sizeof(pef_external_section_header);
+	  if (bfd_seek (abfd, sofar, SEEK_SET) != 0)
+	    return FALSE;
+
+	  buff = (pef_external_section_header *) bfd_malloc (amount);
+	  if (buff == NULL)
+	    return FALSE;
+
+	  H_PUT_32 (abfd, internal_s.name_offset, buff->name_offset);
+	  H_PUT_32 (abfd, internal_s.default_address, buff->default_address);
+	  H_PUT_32 (abfd, internal_s.total_length, buff->total_length);
+	  H_PUT_32 (abfd, internal_s.unpacked_length, buff->unpacked_length);
+	  H_PUT_32 (abfd, internal_s.container_length, buff->container_length);
+	  H_PUT_32 (abfd, internal_s.container_offset, buff->container_offset);
+	  H_PUT_8 (abfd, internal_s.section_kind, buff->section_kind);
+	  H_PUT_8 (abfd, internal_s.share_kind, buff->share_kind);
+	  H_PUT_8 (abfd, internal_s.alignment, buff->alignment);
+	  H_PUT_8 (abfd, internal_s.reserved, buff->reserved);
+
+	  amount = bfd_bwrite (buff, amount, abfd);
+
+	  free (buff);
+
+	  if (amount != sizeof(pef_external_section_header))
+	    return FALSE;
+
+	  sofar += amount;
+	}
+    }
+
+
+  /* Write the loader section contents.  */
+  sofar = loader->filepos;
+  if (bfd_seek (abfd, sofar, SEEK_SET) != 0)
+    return FALSE;
+
+  {
+    //bfd_boolean ok;
+    pef_external_loader_header * buff;
+    bfd_size_type amount = sizeof(pef_external_loader_header) + 100;
+
+    buff = (pef_external_loader_header *) bfd_malloc (amount);
+    if (buff == NULL)
+      return FALSE;
+
+    H_PUT_32 (abfd, internal_l.main_section, buff->main_section);
+    H_PUT_32 (abfd, internal_l.main_offset, buff->main_offset);
+    H_PUT_32 (abfd, internal_l.init_section, buff->init_section);
+    H_PUT_32 (abfd, internal_l.init_offset, buff->init_offset);
+    H_PUT_32 (abfd, internal_l.term_section, buff->term_section);
+    H_PUT_32 (abfd, internal_l.term_offset, buff->term_offset);
+    H_PUT_32 (abfd, internal_l.imported_library_count, buff->imported_library_count);
+    H_PUT_32 (abfd, internal_l.total_imported_symbol_count, buff->total_imported_symbol_count);
+    H_PUT_32 (abfd, internal_l.reloc_section_count, buff->reloc_section_count);
+    H_PUT_32 (abfd, internal_l.reloc_instr_offset, buff->reloc_instr_offset);
+    H_PUT_32 (abfd, internal_l.loader_strings_offset, buff->loader_strings_offset);
+    H_PUT_32 (abfd, internal_l.export_hash_offset, buff->export_hash_offset);
+    H_PUT_32 (abfd, internal_l.export_hash_table_power, buff->export_hash_table_power);
+    H_PUT_32 (abfd, internal_l.exported_symbol_count, buff->exported_symbol_count);
+
+    fprintf(stderr, "writing '%s' section (%lu) at %lu\n", loader->name, amount, sofar);
+    bfd_pef_print_loader_header(abfd, &internal_l, stderr);
+  //ok = bfd_set_section_contents(abfd, loader, buff, 0, amount);
+    amount = bfd_bwrite (buff, amount, abfd);
+
+    free (buff);
+
+    //if (!ok)
+    if (amount != sizeof(pef_external_loader_header) + 100)
+      return FALSE;
+  }
+
+
+  /* Now write header.  */
+  if (bfd_seek (abfd, (file_ptr) 0, SEEK_SET) != 0)
+    return FALSE;
+
+  {
+    pef_external_header * buff;
+    bfd_size_type amount = sizeof(pef_external_header);
+
+    buff = (pef_external_header *) bfd_malloc (amount);
+    if (buff == NULL)
+      return FALSE;
+
+    H_PUT_32 (abfd, internal_f.tag1, buff->tag1);
+    H_PUT_32 (abfd, internal_f.tag2, buff->tag2);
+    H_PUT_32 (abfd, internal_f.architecture, buff->architecture);
+    H_PUT_32 (abfd, internal_f.format_version, buff->format_version);
+    H_PUT_32 (abfd, internal_f.timestamp, buff->timestamp);
+    H_PUT_32 (abfd, internal_f.old_definition_version, buff->old_definition_version);
+    H_PUT_32 (abfd, internal_f.old_implementation_version, buff->old_implementation_version);
+    H_PUT_32 (abfd, internal_f.current_version, buff->current_version);
+    H_PUT_16 (abfd, internal_f.section_count, buff->section_count);
+    H_PUT_16 (abfd, internal_f.instantiated_section_count, buff->instantiated_section_count);
+    H_PUT_32 (abfd, internal_f.reserved, buff->reserved);
+
+    amount = bfd_bwrite (buff, amount, abfd);
+
+    free (buff);
+
+    if (amount != sizeof(pef_external_header))
+      return FALSE;
+  }
+
+  return TRUE;
+}
+
+static bfd_boolean
+bfd_pef_set_section_contents (bfd * abfd,
+			  sec_ptr section,
+			  const void * location,
+			  file_ptr offset,
+			  bfd_size_type count)
+{
+  fprintf(stderr, "%s(,[\"%s\"], %p, %lu, %ld)\n", __FUNCTION__, section->name, location, offset, count);
+  fprintf(stderr, "output_has_begun? %d\n", abfd->output_has_begun);
+  if (! abfd->output_has_begun)	/* Set by bfd.c handler.  */
+    {
+      if (! bfd_pef_compute_section_file_positions (abfd))
+	return FALSE;
+    }
+
+  if (bfd_seek (abfd, section->filepos + offset, SEEK_SET) != 0)
+    return FALSE;
+
+  if (count == 0)
+    return TRUE;
+
+  return bfd_bwrite (location, count, abfd) == count;
+}
+
+static bfd_boolean
+bfd_pef_compute_section_file_positions (bfd * abfd ATTRIBUTE_UNUSED)
+{
+  asection *current;
+  asection *loader;
+  /* XXX: in theory there could be several PEF containers in a single file */
+  file_ptr sofar = sizeof(pef_external_header);
+  fprintf(stderr, "%s()\n", __FUNCTION__);
+
+  /* Create the loader section, which contains all symbols, relocations,
+     imports and exports for all other sections. */
+  /* XXX: delete existing loader section? or patch them?? */
+  /* we don't really care about its size yet, as it's the last section anyway */
+  if (bfd_get_section_by_name(abfd, "loader") != NULL)
+    _bfd_error_handler(_("warning: existing \"loader\" section will be ignored as PEF loader"));
+  loader = bfd_make_section_anyway_with_flags(abfd, "loader", SEC_HAS_CONTENTS);
+  /* that's a minimum*/
+  bfd_set_section_size(abfd, loader, sizeof(pef_external_loader_header) + 100);
+  pef_data(abfd)->loader = loader;
+
+  fprintf(stderr, "section_count = %u\n", abfd->section_count);
+  fprintf(stderr, "name_table_size = %lu\n", pef_data(abfd)->section_name_table_size);
+
+  /* after file header we have all section headers */
+  sofar += abfd->section_count * sizeof(pef_external_section_header);
+
+  /* then we have the section name table */
+  sofar += pef_data(abfd)->section_name_table_size;
+
+  /* code sections should at least be 16 bytes aligned, and we usually start by one */
+  sofar = BFD_ALIGN(sofar, 16);
+  fprintf(stderr, "sofar = %ld\n", sofar);
+
+  /* Section contents don't have to be in the same order as section headers */
+  /* (but instanciated (LOAD) sections' headers must come first.) */
+  for (current = abfd->sections;
+       current != NULL;
+       current = current->next)
+    {
+  fprintf(stderr, "user_set_vma %d\n", current->user_set_vma);
+  fprintf(stderr, "vma %lx\n", current->vma);
+  fprintf(stderr, "lma %lx\n", current->lma);
+      current->rawsize = current->size;
+      current->filepos = sofar;
+      if (!(current->flags & SEC_HAS_CONTENTS)) /* BSS */
+	continue;
+      sofar = BFD_ALIGN (sofar + current->size, 16);
+    }
+
+  abfd->output_has_begun = TRUE;
+
+  return TRUE;
+}
+
+/* Initialize a section structure with information peculiar to this
+   particular implementation of PEF.  */
+
+static bfd_boolean
+bfd_pef_new_section_hook (bfd * abfd, asection * section)
+{
+  fprintf(stderr, "%s(,[\"%s\"])\n", __FUNCTION__, section->name);
+  fprintf(stderr, "user_set_vma %d\n", section->user_set_vma);
+  fprintf(stderr, "vma %lx\n", section->vma);
+  fprintf(stderr, "lma %lx\n", section->lma);
+
+  if (pef_data(abfd))
+    pef_data(abfd)->section_name_table_size += strlen(section->name) + 1;
+
+  /* Set up the section symbol.  */
+  if (!_bfd_generic_new_section_hook (abfd, section))
+    return FALSE;
   return TRUE;
 }
 
@@ -299,6 +661,7 @@ bfd_pef_make_bfd_section (bfd *abfd, bfd_pef_section *section)
 {
   asection *bfdsec;
   const char *name = bfd_pef_section_name (section);
+  fprintf(stderr, "make_bfd_section(,%s)\n", name);
 
   bfdsec = bfd_make_section_anyway (abfd, name);
   if (bfdsec == NULL)
@@ -1038,7 +1401,7 @@ const bfd_target pef_vec =
   },
   {				/* bfd_write_contents.  */
     _bfd_bool_bfd_false_error,
-    _bfd_bool_bfd_true,
+    pef_write_contents,
     _bfd_bool_bfd_false_error,
     _bfd_bool_bfd_false_error,
   },

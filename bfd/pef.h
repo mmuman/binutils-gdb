@@ -210,11 +210,19 @@ typedef struct bfd_pef_section bfd_pef_section;
 #define BFD_PEF_SHARE_GLOBAL 4
 #define BFD_PEF_SHARE_PROTECTED 5
 
+/* Object file tdata; access macros.  */
+
+#define pef_data(bfd)		      ((bfd)->tdata.pef_data)
+
+/* `Tdata' information kept for PEF files.  */
+
 struct bfd_pef_data_struct
 {
   bfd_pef_header header;
   bfd_pef_section *sections;
-  bfd *ibfd;
+  unsigned long section_name_table_size;
+  /*bfd *ibfd;*/
+  asection *loader;
 };
 typedef struct bfd_pef_data_struct bfd_pef_data_struct;
 

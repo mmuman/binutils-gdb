@@ -1182,7 +1182,7 @@ const bfd_target pef_xlib_vec =
   },
   {				/* bfd_write_contents.  */
     _bfd_bool_bfd_false_error,
-    _bfd_bool_bfd_true,
+    _bfd_bool_bfd_false_error,
     _bfd_bool_bfd_false_error,
     _bfd_bool_bfd_false_error,
   },

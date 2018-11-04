@@ -240,8 +240,8 @@ bfd_pef_convert_architecture (unsigned long architecture,
 			      enum bfd_architecture *type,
 			      unsigned long *subtype)
 {
-  const unsigned long ARCH_POWERPC = 0x70777063; /* 'pwpc'.  */
-  const unsigned long ARCH_M68K = 0x6d36386b; /* 'm68k'.  */
+  const unsigned long ARCH_POWERPC = BFD_PEF_ARCH_POWERPC; /* 'pwpc'.  */
+  const unsigned long ARCH_M68K = BFD_PEF_ARCH_M68K; /* 'm68k'.  */
 
   *subtype = bfd_arch_unknown;
   *type = bfd_arch_unknown;

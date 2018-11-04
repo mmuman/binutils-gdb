@@ -175,6 +175,9 @@ enum bfd_pef_imported_symbol_class
 #define BFD_PEF_TAG1 0x4A6F7921 /* 'Joy!' */
 #define BFD_PEF_TAG2 0x70656666 /* 'peff' */
 
+#define BFD_PEF_ARCH_POWERPC 0x70777063 /* 'pwpc' */
+#define BFD_PEF_ARCH_M68K 0x6d36386b /* 'm68k' */
+
 #define BFD_PEF_VERSION 0x00000001
 
 struct bfd_pef_section

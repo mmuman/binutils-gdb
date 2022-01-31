@@ -861,6 +861,7 @@ bfd_pef_scan_start_address (bfd *abfd)
     goto error;
 
   abfd->start_address = section->vma + header.main_offset;
+  fprintf(stderr, "sa: %lx + %lx = %lx\n", section->vma, header.main_offset, abfd->start_address);
 
  end:
   if (loaderbuf != NULL)
